@@ -36,17 +36,25 @@ def match(file:str) -> bool:
     expct = Path(file).stem
     for s in Ffilter:
         res = res.replace(s,"")
+
     if(batchM):
-        print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip(),end="")
+        print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip(),end="") # cleanup print based on mode
     else:
         print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip())
+        
     if(str.upper(expct).strip() == str.upper(res).strip()):
         return True
-    else:
-        return False
+    else:   # if failed try different pre-process
+        res = detect(file, eBlur=False, eTresshold=True, pBlur=True, cMethod=cv.CHAIN_APPROX_TC89_KCOS)
+        for s in Ffilter:
+            res = res.replace(s,"")
+            if(str.upper(expct).strip() == str.upper(res).strip()):
+                return True
+            else:
+                return False
 
 
-def detect(file:str) -> str:
+def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15) -> str:
     if(not(Path(file).exists()) or file == ""):
         print("File at given path does not exist.")
         sys.exit(-1)
@@ -58,17 +66,18 @@ def detect(file:str) -> str:
         cv.waitKey(0)
         cv.destroyAllWindows()
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
-    gray = cv.bilateralFilter(gray, 13, 15, 15)
+    gray = cv.bilateralFilter(gray, 13, fSigma, fSigma)
     if(verbose or verboseF):
         cv.imshow("Gray", gray)
     if(not (verboseF)):
         cv.waitKey(0)
         cv.destroyAllWindows()
-
-    edged = cv.Canny(gray, 30, 200) 
-    contours = cv.findContours(edged.copy(), cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    if(pBlur):
+        gray = cv.medianBlur(gray,3)
+    edged = cv.Canny(gray, 75, 250) 
+    contours = cv.findContours(edged.copy(), cv.RETR_TREE, cMethod)
     contours = imutils.grab_contours(contours)
-    contours = sorted(contours, key = cv.contourArea, reverse = True)[:10]
+    contours = sorted(contours, key = cv.contourArea, reverse = True)
     screenCnt = None
     if(verbose or verboseF):
         cv.imshow("Contour", edged)
@@ -78,12 +87,12 @@ def detect(file:str) -> str:
 
     for c in contours:
         peri = cv.arcLength(c, True)
-        approx = cv.approxPolyDP(c, 0.018 * peri, True)
+        approx = cv.approxPolyDP(c, 0.020 * peri, True)
     
         if len(approx) == 4:
             screenCnt = approx
             break
-
+    
     if screenCnt is None:
         detected = 0
         print ("No contour detected")
@@ -92,7 +101,7 @@ def detect(file:str) -> str:
     cv.drawContours(img, [screenCnt], -1, (0, 0, 255), 3) # draw contour around detected licence plate
     
     mask = np.zeros(gray.shape,np.uint8)
-    mask = cv.drawContours(mask,[screenCnt],0,255,-1,) # draw mask
+    mask = cv.drawContours(mask,[screenCnt],0,255,-1) # draw mask
     #mask = cv.bitwise_and(img,img,mask=mask)
     
     (x, y) = np.where(mask == 255)
@@ -100,8 +109,19 @@ def detect(file:str) -> str:
     (bottomx, bottomy) = (np.max(x), np.max(y))
     Cropped = gray[topx:bottomx+1, topy:bottomy+1]
 
+    if(eBlur):
+        Cropped = cv.medianBlur(Cropped,3)
+    #Cropped = cv.bilateralFilter(Cropped,9,75,75)
+    
+    if(eTresshold):
+        kernel = np.ones((3,3),np.uint8)
+        Cropped = cv.morphologyEx(Cropped, cv.MORPH_OPEN, kernel)
+        #Cropped = cv.threshold(Cropped, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[1]
+        Cropped = cv.adaptiveThreshold(Cropped,255,cv.ADAPTIVE_THRESH_MEAN_C,cv.THRESH_BINARY,5,2)
+        #Cropped = cv.dilate(Cropped, kernel, iterations = 1)
+
     text = pytesseract.image_to_string(Cropped, config='--psm 11')
-    text = re.sub(r"[^a-zA-Z0-9 ]", "", text)
+    text = re.sub(r"[^A-Z0-9]", "", text)
     print("Detected license plate Number is:",text)
     img = cv.resize(img,(500,300))
     Cropped = cv.resize(Cropped,(400,200))
