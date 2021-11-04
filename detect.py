@@ -10,7 +10,6 @@ from pathlib import Path
 import re
 from pytesseract.pytesseract import main
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\TIBDBQN\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 verbose = False     # if enabled images are displayed while detection is in progress. 
 verboseF = False    # if enabled images are displayed while detection is in progress (they are all displayed at the same time). 
@@ -36,10 +35,6 @@ def match(file:str) -> bool:
     for s in Ffilter:
         res = res.replace(s,"")
 
-    if(batchM):
-        print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip(),end="") # cleanup print based on mode
-    else:
-        print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip())
         
     if(str.upper(expct).strip() == str.upper(res).strip()):
         return True
@@ -56,20 +51,26 @@ def match(file:str) -> bool:
 def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15) -> str:
     if(not(Path(file).exists()) or file == ""):
         print("File at given path does not exist.")
+        sys.exit()
+
     img = cv.imread(file)
     img = cv.resize(img, (600,400))
+
     if(verbose or verboseF):
         cv.imshow("Color", img)
     if(not (verboseF)):
         cv.waitKey(0)
         cv.destroyAllWindows()
+
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
     gray = cv.bilateralFilter(gray, 13, fSigma, fSigma)
+
     if(verbose or verboseF):
         cv.imshow("Gray", gray)
     if(not (verboseF)):
         cv.waitKey(0)
         cv.destroyAllWindows()
+
     if(pBlur):
         gray = cv.medianBlur(gray,3)
 
@@ -143,6 +144,8 @@ def main():
             sys.exit()
         elif opt in ("-i"):
             global inputfile 
+            inputfile = arg.strip()
+            if(not(Path(arg).exists()) and not(Path(inputfile).is_dir())):
                 print("File at given path does not exist.")
                 sys.exit(-1)
         elif opt in ("-s"):
@@ -163,6 +166,8 @@ def main():
 
     if(batchM and Path(inputfile).is_dir()):
         correct = 0
+        all = len(os.listdir(inputfile))
+        for file in os.listdir(inputfile):
             if(match(inputfile+file)):
                 correct = correct+1
                 print(" Matching!")
