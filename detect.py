@@ -6,6 +6,7 @@ import numpy as np
 import pytesseract
 import getopt
 import sys
+import os
 from pathlib import Path
 import re
 from pytesseract.pytesseract import main
@@ -16,7 +17,9 @@ verboseF = False    # if enabled images are displayed while detection is in prog
 helpMSG = "detect.py -i <inputfile> [-v/-V] [-b] [-S]"
 batchM = False      # enable batch mode
 silentM = False     # enable silent mode
+patternM = False    # enable pattern based otr 
 
+inputfile = r"" # file to be read
 Ffilter = "-" # filter used on result when comparing to expected output
 Gsize = (600,400)
 
@@ -35,6 +38,7 @@ def match(file:str) -> bool:
     for s in Ffilter:
         res = res.replace(s,"")
 
+    print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip())
         
     if(str.upper(expct).strip() == str.upper(res).strip()):
         return True
@@ -44,11 +48,25 @@ def match(file:str) -> bool:
             res = res.replace(s,"")
             if(str.upper(expct).strip() == str.upper(res).strip()):
                 return True
+        if(str.upper(expct).strip() == str.upper(res).strip()):
+            return True
+        else:
+            if(patternM):
+                res = detect(file, ePattern=True)
+                for s in Ffilter:
+                    res = res.replace(s,"")
+                if re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res)):
+                    matches = re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res))
+                    print("Pattern based search result: "+matches.group())
+                    if(str.upper(expct).strip() == str.upper(matches.group()).strip()):
+                        return True
+                    return False
             else:
                 return False
 
 
 def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15) -> str:
+def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15, ePattern:bool= False) -> str:
     if(not(Path(file).exists()) or file == ""):
         print("File at given path does not exist.")
         sys.exit()
@@ -73,6 +91,15 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
     if(pBlur):
         gray = cv.medianBlur(gray,3)
+
+    if(ePattern):
+        text = pytesseract.image_to_string(gray, config='--psm 11')
+        text = re.sub(r"[^A-Z0-9]", "", text)
+        if(text != ""):
+            print("Detected license plate number is (Pattern based):",text)
+        else:
+            print("License plate number could not be detected (Pattern based)!")
+        return text
 
     edged = cv.Canny(gray, 75, 250) 
     contours = cv.findContours(edged.copy(), cv.RETR_TREE, cMethod)
@@ -122,6 +149,10 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
     text = pytesseract.image_to_string(Cropped, config='--psm 11')
     text = re.sub(r"[^A-Z0-9]", "", text)
     print("Detected license plate Number is:",text)
+    if(text != ""):
+        print("Detected license plate number is:",text)
+    else:
+        print("License plate number could not be detected!")
     img = cv.resize(img,(500,300))
     Cropped = cv.resize(Cropped,(400,200))
     if(not(silentM)):
@@ -135,6 +166,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbS")
+        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbSM")
     except getopt.getopt.GetoptError:
         print(helpMSG)
         sys.exit(2)
@@ -148,9 +180,6 @@ def main():
             if(not(Path(arg).exists()) and not(Path(inputfile).is_dir())):
                 print("File at given path does not exist.")
                 sys.exit(-1)
-        elif opt in ("-s"):
-            global Gsize
-            Gsize = arg
         elif opt == "-v":
             global verbose 
             verbose = True
@@ -161,8 +190,12 @@ def main():
             global batchM 
             batchM = True
         elif opt == "-S":
+        elif (opt == "-S" or opt in ("-s")):
             global silentM 
             silentM = True
+        elif opt == "-M":
+            global patternM
+            patternM = True
 
     if(batchM and Path(inputfile).is_dir()):
         correct = 0
