@@ -65,7 +65,6 @@ def match(file:str) -> bool:
                 return False
 
 
-def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15) -> str:
 def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15, ePattern:bool= False) -> str:
     if(not(Path(file).exists()) or file == ""):
         print("File at given path does not exist.")
@@ -128,16 +127,15 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
     
     mask = np.zeros(gray.shape,np.uint8)
     mask = cv.drawContours(mask,[screenCnt],0,255,-1) # draw mask
-    #mask = cv.bitwise_and(img,img,mask=mask)
     
     (x, y) = np.where(mask == 255)
     (topx, topy) = (np.min(x), np.min(y))
     (bottomx, bottomy) = (np.max(x), np.max(y))
-    Cropped = gray[topx:bottomx+1, topy:bottomy+1]
+    Cropped = gray[topx:bottomx+1, topy:bottomy+1]  # cropp out masked area
 
     if(eBlur):
         Cropped = cv.medianBlur(Cropped,3)
-    #Cropped = cv.bilateralFilter(Cropped,9,75,75)
+        #Cropped = cv.bilateralFilter(Cropped,9,75,75)
     
     if(eTresshold):
         kernel = np.ones((3,3),np.uint8)
@@ -148,14 +146,13 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
     text = pytesseract.image_to_string(Cropped, config='--psm 11')
     text = re.sub(r"[^A-Z0-9]", "", text)
-    print("Detected license plate Number is:",text)
     if(text != ""):
         print("Detected license plate number is:",text)
     else:
         print("License plate number could not be detected!")
-    img = cv.resize(img,(500,300))
-    Cropped = cv.resize(Cropped,(400,200))
     if(not(silentM)):
+        img = cv.resize(img,(500,300))
+        Cropped = cv.resize(Cropped,(400,200))
         cv.imshow('Original',img)
         cv.imshow('Cropped',Cropped)
         cv.waitKey(0)
@@ -165,8 +162,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbS")
-        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbSM")
+        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSMm")
     except getopt.getopt.GetoptError:
         print(helpMSG)
         sys.exit(2)
@@ -186,14 +182,13 @@ def main():
         elif opt == "-V":
             global verboseF 
             verboseF = True
-        elif opt == "-b":
+        elif (opt == "-b" or opt == "-B"):
             global batchM 
             batchM = True
-        elif opt == "-S":
         elif (opt == "-S" or opt in ("-s")):
             global silentM 
             silentM = True
-        elif opt == "-M":
+        elif (opt == "-M" or opt == "-m"):
             global patternM
             patternM = True
 
