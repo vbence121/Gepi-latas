@@ -1,5 +1,6 @@
 #from os import terminal_size
 #from numpy.core.fromnumeric import size
+from types import NoneType
 import cv2 as cv
 import imutils
 import numpy as np
@@ -23,6 +24,13 @@ inputfile = r"" # file to be read
 Ffilter = "-" # filter used on result when comparing to expected output
 Gsize = (600,400)
 
+def patternSearch(inp:str)->str:
+    if(inp == NoneType):
+        return ""
+    if re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(inp)):
+        matches = re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(inp))
+        return matches.group()
+
 def match(file:str) -> bool:
     """
     Try to read image file and check result against expected license plate.
@@ -33,24 +41,25 @@ def match(file:str) -> bool:
         print("File at given path does not exist.")
         sys.exit(-1)
     res = detect(file)
-
     expct = Path(file).stem
     for s in Ffilter:
         res = res.replace(s,"")
 
     print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip())
         
-    if(str.upper(expct).strip() == str.upper(res).strip()):
+    if(res != "" or type(res) != NoneType) and (str.upper(expct).strip() == str.upper(res).strip()):
         return True
     else:   # if failed try different pre-process
+        if((len(res) > 6 ) and (str.upper(expct).strip() == str.upper(patternSearch(res)))):
+            return True
         res = detect(file, eBlur=False, eTresshold=True, pBlur=True, cMethod=cv.CHAIN_APPROX_TC89_KCOS)
         for s in Ffilter:
             res = res.replace(s,"")
-            if(str.upper(expct).strip() == str.upper(res).strip()):
-                return True
-        if(str.upper(expct).strip() == str.upper(res).strip()):
+        if(res != "" or res != NoneType) and (str.upper(expct).strip() == str.upper(res).strip()):
             return True
         else:
+            if((patternSearch(res) != "" and type(patternSearch(res)) != NoneType) and ((len(res) > 6 ) and (str.upper(expct).strip() == str.upper(patternSearch(res))))):
+                return True
             if(patternM):
                 res = detect(file, ePattern=True)
                 for s in Ffilter:
@@ -58,7 +67,7 @@ def match(file:str) -> bool:
                 if re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res)):
                     matches = re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res))
                     print("Pattern based search result: "+matches.group())
-                    if(str.upper(expct).strip() == str.upper(matches.group()).strip()):
+                    if(res != "" or res != NoneType) and (str.upper(expct).strip() == str.upper(matches.group()).strip()):
                         return True
                     return False
             else:
@@ -98,6 +107,9 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
             print("Detected license plate number is (Pattern based):",text)
         else:
             print("License plate number could not be detected (Pattern based)!")
+        if(verbose or verboseF  ):
+            cv.waitKey(0)
+            cv.destroyAllWindows()
         return text
 
     edged = cv.Canny(gray, 75, 250) 
@@ -162,7 +174,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSMm")
+        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSsMm")
     except getopt.getopt.GetoptError:
         print(helpMSG)
         sys.exit(2)
@@ -194,8 +206,10 @@ def main():
 
     if(batchM and Path(inputfile).is_dir()):
         correct = 0
-        all = len(os.listdir(inputfile))
+        all = len([name for name in os.listdir(inputfile) if os.path.isfile(inputfile+name)])
         for file in os.listdir(inputfile):
+            if(not(Path(inputfile+file).is_file())):
+                continue
             if(match(inputfile+file)):
                 correct = correct+1
                 print(" Matching!")
