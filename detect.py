@@ -224,11 +224,12 @@ def main():
                 correct = correct+1
                 print(" Matching!")
             else:
-                print(" Result does not match or image detection failed.")
+                print("Result does not match or image detection failed.")
         print("\nMatch ratio: "+str(correct)+"\\"+str(all))
     else:
+        print( "\nWorking on:", inputfile)
         if(detect(inputfile)):
-            print("Matching!")
+            print(" Matching!")
         else:
             print("Result does not match or image detection failed.")
 
