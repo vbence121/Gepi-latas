@@ -15,11 +15,12 @@ from pytesseract.pytesseract import main
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\TIBDBQN\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 verbose = False     # if enabled images are displayed while detection is in progress. 
 verboseF = False    # if enabled images are displayed while detection is in progress (they are all displayed at the same time). 
-helpMSG = "detect.py -i <inputfile> [-v/-V] [-b] [-S]"
+helpMSG = "detect.py -i <inputfile> [-v/-V] [-b] [-S] [-O]"
 batchM = False      # enable batch mode
 silentM = False     # enable silent mode
 patternM = False    # enable pattern based otr 
 recall = ""
+outp = False
 
 inputfile = r"" # file to be read
 Ffilter = "-" # filter used on result when comparing to expected output
@@ -63,7 +64,8 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
     gray = cv.bilateralFilter(gray, 13, fSigma, fSigma)
-
+    if(outp):
+        cv.imwrite("gy.jpg", gray)
     if(verbose or verboseF):
         cv.imshow("Gray", gray)
     if(not (verboseF)):
@@ -79,7 +81,8 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
     contours = imutils.grab_contours(contours)
     contours = sorted(contours, key = cv.contourArea, reverse = True)
     screenCnt = None
-
+    if(outp):
+        cv.imwrite("contours.jpg", edged)
     if(verbose or verboseF):
         cv.imshow("Contour", edged)
     #if(not (verboseF)):
@@ -107,8 +110,9 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
             x,y,w,h = cv.boundingRect(c)
             cv.rectangle(imgTmp,(x,y),(x+w,y+h),(255,0,0),3)    #draws rectangle in blue (visual only)
             if(not ratioCheck(cv.contourArea(c),w,h) & (screenCnt is None)): # if there wasnt a valid possible match yet but the current one is then update the max area
-                if(absMaxArea*0.8<cv.contourArea(c)):   # only change max area if the absMaxAerea*80% is smaller to avoid going over unnecesary contours
+                if(absMaxArea*0.6<cv.contourArea(c)):   # only change max area if the absMaxAerea*60% is smaller to avoid going over unnecesary contours
                     maxArea = cv.contourArea(c)
+                    print(" MaxArea changed", maxArea)
                     #continue
 
             if(maxArea*0.9 > cv.contourArea(c)):    # if the area is smaller then the x% of the max area then either try with diferent settings or return 
@@ -140,7 +144,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
                 Cropped = cv.morphologyEx(Cropped, cv.MORPH_OPEN, kernel)
                 Cropped = cv.adaptiveThreshold(Cropped,255,cv.ADAPTIVE_THRESH_MEAN_C,cv.THRESH_BINARY,5,2)
 
-            text = pytesseract.image_to_string(Cropped, config='--psm 11')
+            text = pytesseract.image_to_string(Cropped, config='--psm 11 --oem 1')
             text = re.sub(r"[^A-Z0-9]", "", text)
 
             if(text != ""):     # print out result
@@ -159,6 +163,9 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
             for s in Ffilter:
                 text = text.replace(s,"")
             if(text != "" and text != NoneType) and (str.upper(Path(file).stem).strip() == str.upper(text).strip()):
+                if(outp):
+                    cv.imwrite("crop.jpg", Cropped)
+                    cv.imwrite("highlighted.jpg", imgTmp)
                 return True
             if(patternM):
                 if((len(text) > 6 ) and (str.upper(expct).strip() == patternSearch(text))):
@@ -180,7 +187,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSMm")
+        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSMmoO")
     except:
         print(helpMSG)
         sys.exit(2)
@@ -204,12 +211,15 @@ def main():
             elif (opt == "-b" or opt == "-B"):
                 global batchM 
                 batchM = True
-            elif (opt == "-s" or opt == "-S"):
+            elif (opt == "-S"):
                 global silentM 
                 silentM = True
             elif (opt == "-M" or opt == "-m"):
                 global patternM
                 patternM = True
+            elif (opt == "-o" or opt == "-O"):
+                global outp
+                outp = True
     except:
         print("Input Parse Error")
         sys.exit(-1)        
