@@ -15,10 +15,12 @@ from pytesseract.pytesseract import main
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\TIBDBQN\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 verbose = False     # if enabled images are displayed while detection is in progress. 
 verboseF = False    # if enabled images are displayed while detection is in progress (they are all displayed at the same time). 
-helpMSG = "detect.py -i <inputfile> [-v/-V] [-b] [-S]"
+helpMSG = "detect.py -i <inputfile> [-v/-V] [-b] [-S] [-O]"
 batchM = False      # enable batch mode
 silentM = False     # enable silent mode
 patternM = False    # enable pattern based otr 
+recall = ""
+outp = False
 
 inputfile = r"" # file to be read
 Ffilter = "-" # filter used on result when comparing to expected output
@@ -31,53 +33,24 @@ def patternSearch(inp:str)->str:
         matches = re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(inp))
         return matches.group()
 
-def match(file:str) -> bool:
+def ratioCheck(area, width, height):
+    ratio = float(width) / float(height)
+    if ratio < 1:
+        ratio = 1 / ratio
+    if (area < 1063.62 or area > 73862.5) or (ratio < 3 or ratio > 6):
+        return False
+    return True
+
+def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15, ePattern:bool= False, aDetect:bool = False) -> bool:
     """
     Try to read image file and check result against expected license plate.
     """
+
     if(file == ""):
         print(helpMSG)
     if(not(Path(file).exists())):
         print("File at given path does not exist.")
         sys.exit(-1)
-    res = detect(file)
-    expct = Path(file).stem
-    for s in Ffilter:
-        res = res.replace(s,"")
-
-    print("exp:"+str.upper(expct).strip()+" result:"+str.upper(res).strip())
-        
-    if(res != "" or type(res) != NoneType) and (str.upper(expct).strip() == str.upper(res).strip()):
-        return True
-    else:   # if failed try different pre-process
-        if((len(res) > 6 ) and (str.upper(expct).strip() == str.upper(patternSearch(res)))):
-            return True
-        res = detect(file, eBlur=False, eTresshold=True, pBlur=True, cMethod=cv.CHAIN_APPROX_TC89_KCOS)
-        for s in Ffilter:
-            res = res.replace(s,"")
-        if(res != "" or res != NoneType) and (str.upper(expct).strip() == str.upper(res).strip()):
-            return True
-        else:
-            if((patternSearch(res) != "" and type(patternSearch(res)) != NoneType) and ((len(res) > 6 ) and (str.upper(expct).strip() == str.upper(patternSearch(res))))):
-                return True
-            if(patternM):
-                res = detect(file, ePattern=True)
-                for s in Ffilter:
-                    res = res.replace(s,"")
-                if re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res)):
-                    matches = re.search(r"[A-Z][A-Z][A-Z][0-9][0-9][0-9]", str.upper(res))
-                    print("Pattern based search result: "+matches.group())
-                    if(res != "" or res != NoneType) and (str.upper(expct).strip() == str.upper(matches.group()).strip()):
-                        return True
-                    return False
-            else:
-                return False
-
-
-def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, cMethod=cv.CHAIN_APPROX_SIMPLE, fSigma:int=15, ePattern:bool= False) -> str:
-    if(not(Path(file).exists()) or file == ""):
-        print("File at given path does not exist.")
-        sys.exit()
 
     img = cv.imread(file)
     img = cv.resize(img, (600,400))
@@ -85,140 +58,188 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
     if(verbose or verboseF):
         cv.imshow("Color", img)
     if(not (verboseF)):
-        cv.waitKey(0)
+        if(cv.waitKey(0) == ord('a')):
+            sys.exit(1)
         cv.destroyAllWindows()
 
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY) 
     gray = cv.bilateralFilter(gray, 13, fSigma, fSigma)
-
+    if(outp):
+        cv.imwrite("gy.jpg", gray)
     if(verbose or verboseF):
         cv.imshow("Gray", gray)
     if(not (verboseF)):
-        cv.waitKey(0)
+        if(cv.waitKey(0) == ord('a')):
+            sys.exit(1)
         cv.destroyAllWindows()
 
     if(pBlur):
         gray = cv.medianBlur(gray,3)
-
-    if(ePattern):
-        text = pytesseract.image_to_string(gray, config='--psm 11')
-        text = re.sub(r"[^A-Z0-9]", "", text)
-        if(text != ""):
-            print("Detected license plate number is (Pattern based):",text)
-        else:
-            print("License plate number could not be detected (Pattern based)!")
-        if(verbose or verboseF  ):
-            cv.waitKey(0)
-            cv.destroyAllWindows()
-        return text
 
     edged = cv.Canny(gray, 75, 250) 
     contours = cv.findContours(edged.copy(), cv.RETR_TREE, cMethod)
     contours = imutils.grab_contours(contours)
     contours = sorted(contours, key = cv.contourArea, reverse = True)
     screenCnt = None
-
+    if(outp):
+        cv.imwrite("contours.jpg", edged)
     if(verbose or verboseF):
         cv.imshow("Contour", edged)
     #if(not (verboseF)):
-        cv.waitKey(0)
+        if(cv.waitKey(0) == ord('a')):
+            sys.exit(1)
         cv.destroyAllWindows()
 
+    maxArea = -1
+    absMaxArea = -1
+    expct = Path(file).stem
+    global recall
+    #if(recall == ""):
+        #recall = expct
+    
     for c in contours:
         peri = cv.arcLength(c, True)
         approx = cv.approxPolyDP(c, 0.020 * peri, True)
         if len(approx) == 4:
-            screenCnt = approx
-            break
+            if(maxArea < cv.contourArea(c)):    # update max area
+                maxArea = cv.contourArea(c)
+                if(absMaxArea<maxArea):
+                    absMaxArea = cv.contourArea(c)
+            imgTmp = img.copy()                 # create copy to not impact original
+
+            x,y,w,h = cv.boundingRect(c)
+            cv.rectangle(imgTmp,(x,y),(x+w,y+h),(255,0,0),3)    #draws rectangle in blue (visual only)
+            if(not ratioCheck(cv.contourArea(c),w,h) & (screenCnt is None)): # if there wasnt a valid possible match yet but the current one is then update the max area
+                if(absMaxArea*0.6<cv.contourArea(c)):   # only change max area if the absMaxAerea*60% is smaller to avoid going over unnecesary contours
+                    maxArea = cv.contourArea(c)
+                    print(" MaxArea changed", maxArea)
+                    #continue
+
+            if(maxArea*0.9 > cv.contourArea(c)):    # if the area is smaller then the x% of the max area then either try with diferent settings or return 
+                if((recall != expct)):
+                    print(" Recall activated")
+                    recall = expct
+                    return detect(file, eBlur=False, eTresshold=True, pBlur=True, cMethod=cv.CHAIN_APPROX_TC89_KCOS)
+                else:
+                    return False
+
+            screenCnt = approx                  # copy approximate center
+            cv.drawContours(imgTmp, [screenCnt], -1, (0, 0, 255), 3) # draw contour around detected licence plate (only visual)
+    
+            mask = np.zeros(gray.shape,np.uint8)
+            mask = cv.drawContours(mask,[screenCnt],0,255,-1) # draw mask
+            #mask = cv.rectangle(mask,(x,y),(x+w,y+h),(255,0,0),-1)
+
+            (x, y) = np.where(mask == 255)
+            (topx, topy) = (np.min(x), np.min(y))
+            (bottomx, bottomy) = (np.max(x), np.max(y))
+            x,y,w,h = cv.boundingRect(c)
+            Cropped = gray[x:x+w+1, y:y+h+1]  # cropp out masked area
+            Cropped = gray[topx:bottomx+1, topy:bottomy+1]  # cropp out masked area
+
+            if(eBlur):
+                Cropped = cv.medianBlur(Cropped,3)
+            if(eTresshold):
+                kernel = np.ones((3,3),np.uint8)
+                Cropped = cv.morphologyEx(Cropped, cv.MORPH_OPEN, kernel)
+                Cropped = cv.adaptiveThreshold(Cropped,255,cv.ADAPTIVE_THRESH_MEAN_C,cv.THRESH_BINARY,5,2)
+
+            text = pytesseract.image_to_string(Cropped, config='--psm 11 --oem 1')
+            text = re.sub(r"[^A-Z0-9]", "", text)
+
+            if(text != ""):     # print out result
+                print(" exp:"+str.upper(Path(file).stem).strip()+" result:"+str.upper(text).strip())
+            else:
+                print(" License plate number could not be detected!")
+
+            if(not(silentM)):   # show result images
+                imgTmp = cv.resize(imgTmp,(500,300))
+                Cropped = cv.resize(Cropped,(400,200))
+                cv.imshow('Original',imgTmp)
+                cv.imshow('Cropped',Cropped)
+                if(cv.waitKey(0) == 27):
+                    sys.exit(1)
+                cv.destroyAllWindows()
+            for s in Ffilter:
+                text = text.replace(s,"")
+            if(text != "" and text != NoneType) and (str.upper(Path(file).stem).strip() == str.upper(text).strip()):
+                if(outp):
+                    cv.imwrite("crop.jpg", Cropped)
+                    cv.imwrite("highlighted.jpg", imgTmp)
+                return True
+            if(patternM):
+                if((len(text) > 6 ) and (str.upper(expct).strip() == patternSearch(text))):
+                    print(" Pattern Based result:",patternSearch(text))
+                    return True
+
     if screenCnt is None:
-        detected = 0
-        print ("No contour detected")
-        return ""
-    
-    cv.drawContours(img, [screenCnt], -1, (0, 0, 255), 3) # draw contour around detected licence plate
-    
-    mask = np.zeros(gray.shape,np.uint8)
-    mask = cv.drawContours(mask,[screenCnt],0,255,-1) # draw mask
-    
-    (x, y) = np.where(mask == 255)
-    (topx, topy) = (np.min(x), np.min(y))
-    (bottomx, bottomy) = (np.max(x), np.max(y))
-    Cropped = gray[topx:bottomx+1, topy:bottomy+1]  # cropp out masked area
+        print (" No contour detected")
+        return False
 
-    if(eBlur):
-        Cropped = cv.medianBlur(Cropped,3)
-        #Cropped = cv.bilateralFilter(Cropped,9,75,75)
-    
-    if(eTresshold):
-        kernel = np.ones((3,3),np.uint8)
-        Cropped = cv.morphologyEx(Cropped, cv.MORPH_OPEN, kernel)
-        #Cropped = cv.threshold(Cropped, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)[1]
-        Cropped = cv.adaptiveThreshold(Cropped,255,cv.ADAPTIVE_THRESH_MEAN_C,cv.THRESH_BINARY,5,2)
-        #Cropped = cv.dilate(Cropped, kernel, iterations = 1)
-
-    text = pytesseract.image_to_string(Cropped, config='--psm 11')
-    text = re.sub(r"[^A-Z0-9]", "", text)
-    if(text != ""):
-        print("Detected license plate number is:",text)
+    if(expct != expct):
+        print(" Recall activated")
+        recall = expct
+        return detect(file, eBlur=False, eTresshold=True, pBlur=True, cMethod=cv.CHAIN_APPROX_TC89_KCOS)
     else:
-        print("License plate number could not be detected!")
-    if(not(silentM)):
-        img = cv.resize(img,(500,300))
-        Cropped = cv.resize(Cropped,(400,200))
-        cv.imshow('Original',img)
-        cv.imshow('Cropped',Cropped)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
-    return text
+        return True
+
 
 
 def main():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSsMm")
-    except getopt.getopt.GetoptError:
+        opts, args = getopt.getopt(sys.argv[1:], "hi:s:VvbBSMmoO")
+    except:
         print(helpMSG)
         sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print(helpMSG)
-            sys.exit()
-        elif opt in ("-i"):
-            global inputfile 
-            inputfile = arg.strip()
-            if(not(Path(arg).exists()) and not(Path(inputfile).is_dir())):
-                print("File at given path does not exist.")
-                sys.exit(-1)
-        elif opt == "-v":
-            global verbose 
-            verbose = True
-        elif opt == "-V":
-            global verboseF 
-            verboseF = True
-        elif (opt == "-b" or opt == "-B"):
-            global batchM 
-            batchM = True
-        elif (opt == "-S" or opt in ("-s")):
-            global silentM 
-            silentM = True
-        elif (opt == "-M" or opt == "-m"):
-            global patternM
-            patternM = True
-
+    try:
+        for opt, arg in opts:
+            if opt == '-h':
+                print(helpMSG)
+                sys.exit()
+            elif opt in ("-i"):
+                global inputfile 
+                inputfile = arg.strip()
+                if(not(Path(arg).exists()) and not(Path(inputfile).is_dir())):
+                    print("File at given path does not exist.")
+                    sys.exit(-1)
+            elif opt == "-v":
+                global verbose 
+                verbose = True
+            elif opt == "-V":
+                global verboseF 
+                verboseF = True
+            elif (opt == "-b" or opt == "-B"):
+                global batchM 
+                batchM = True
+            elif (opt == "-S"):
+                global silentM 
+                silentM = True
+            elif (opt == "-M" or opt == "-m"):
+                global patternM
+                patternM = True
+            elif (opt == "-o" or opt == "-O"):
+                global outp
+                outp = True
+    except:
+        print("Input Parse Error")
+        sys.exit(-1)        
     if(batchM and Path(inputfile).is_dir()):
         correct = 0
         all = len([name for name in os.listdir(inputfile) if os.path.isfile(inputfile+name)])
         for file in os.listdir(inputfile):
             if(not(Path(inputfile+file).is_file())):
                 continue
-            if(match(inputfile+file)):
+            print( "\nWorking on:", file)
+            if(detect(inputfile+file)):
                 correct = correct+1
                 print(" Matching!")
             else:
-                print(" Result does not match or image detection failed.")
+                print("Result does not match or image detection failed.")
         print("\nMatch ratio: "+str(correct)+"\\"+str(all))
     else:
-        if(match(inputfile)):
-            print("Matching!")
+        print( "\nWorking on:", inputfile)
+        if(detect(inputfile)):
+            print(" Matching!")
         else:
             print("Result does not match or image detection failed.")
 
