@@ -52,7 +52,6 @@ def compute_skew(src_img):
         return "-666"
     nlines = lines.size
 
-    #print(nlines)
     cnt = 0
     for x1, y1, x2, y2 in lines[0]:
         ang = np.arctan2(y2 - y1, x2 - x1)
