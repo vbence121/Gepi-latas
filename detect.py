@@ -13,7 +13,7 @@ import re
 import math
 from pytesseract.pytesseract import main
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\TIBDBQN\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 verbose = False     # if enabled images are displayed while detection is in progress. 
 verboseF = False    # if enabled images are displayed while detection is in progress (they are all displayed at the same time). 
 helpMSG = "detect.py -i <inputfile> [-v/-V] [-B] [-S] [-O] [-R]"
