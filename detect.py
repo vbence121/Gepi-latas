@@ -20,18 +20,17 @@ helpMSG = "detect.py -i <inputfile> [-v/-V] [-B] [-S] [-O] [-R]"
 batchM = False      # enable batch mode
 silentM = False     # enable silent mode
 patternM = False    # enable pattern based otr 
-recall = ""
-outp = False
-eSkew = False
+recall = ""         # the variable that defines whether a recall of the detect function has already happened once on an image
+outp = False        # defines if along the detection the displayed images need to be saved as well
+eSkew = False       # defines if the rotation skew function is enabled
 
 inputfile = r"" # file to be read
 Ffilter = "-" # filter used on result when comparing to expected output
-Gsize = (600,400)
 
 def rotate_image(image, angle):
-    image_center = tuple(np.array(image.shape[1::-1]) / 2)
-    rot_mat = cv.getRotationMatrix2D(image_center, angle, 1.0)
-    result = cv.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv.INTER_LINEAR)
+    image_center = tuple(np.array(image.shape[1::-1]) / 2)                              # find the center of image
+    rot_mat = cv.getRotationMatrix2D(image_center, angle, 1.0)                          # calculate the needed rotation  
+    result = cv.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv.INTER_LINEAR)   #warp the image based on the rotation map
     return result
 
 def compute_skew(src_img):
@@ -45,17 +44,16 @@ def compute_skew(src_img):
 
     img = cv.medianBlur(src_img, 3)
 
-    edges = cv.Canny(img,  threshold1 = 30,  threshold2 = 100, apertureSize = 3, L2gradient = True)
-    lines = cv.HoughLinesP(edges, 1, math.pi/180, 30, minLineLength=w / 4.0, maxLineGap=h/4.0)
+    edges = cv.Canny(img,  threshold1 = 30,  threshold2 = 100, apertureSize = 3, L2gradient = True) # create binary image
+    lines = cv.HoughLinesP(edges, 1, math.pi/180, 30, minLineLength=w / 4.0, maxLineGap=h/4.0)      # detect lines on binary image that are at least image_width/4 long
     angle = 0.0
-    if(lines is None):
+    if(lines is None):  # if no lines are found return a value indicating such
         return "-666"
     nlines = lines.size
 
     cnt = 0
     for x1, y1, x2, y2 in lines[0]:
         ang = np.arctan2(y2 - y1, x2 - x1)
-        #print(ang)
         if math.fabs(ang) <= 30: # excluding extreme rotations
             angle += ang
             cnt += 1
