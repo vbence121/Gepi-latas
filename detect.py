@@ -82,7 +82,7 @@ def detectT(Cropped, file:str, imgTmp, skew:bool=False):
     text = re.sub(r"[^A-Z0-9]", "", text)
 
     if(text != ""):     # print out result
-        print(" exp:"+str.upper(Path(file).stem).strip()+" result:"+str.upper(text).strip())
+        print(" exp:"+str.upper(Path(file).stem.split('.')[0]).strip()+" result:"+str.upper(text).strip())
     else:
         print(" License plate number could not be detected!")
 
@@ -96,13 +96,13 @@ def detectT(Cropped, file:str, imgTmp, skew:bool=False):
         cv.destroyAllWindows()
     for s in Ffilter:
         text = text.replace(s,"")
-    if(text != "" and text != NoneType) and (str.upper(Path(file).stem).strip() == str.upper(text).strip()):
+    if(text != "" and text != NoneType) and (str.upper(Path(file).stem.split('.')[0]).strip() == str.upper(text).strip()):
         if(outp):
             cv.imwrite("crop.jpg", Cropped)
             cv.imwrite("highlighted.jpg", imgTmp)
         return True
     if(patternM):
-        if((len(text) > 6 ) and (str.upper(Path(file).stem).strip() == patternSearch(text))):
+        if((len(text) > 6 ) and (str.upper(Path(file).stem.split('.')[0]).strip() == patternSearch(text))):
             print(" Pattern Based result:",patternSearch(text))
             return True
 
