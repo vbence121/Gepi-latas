@@ -115,6 +115,7 @@ def detect(file:str, eTresshold:bool=False, eBlur:bool=True, pBlur:bool=False, c
 
     if(file == ""):
         print(helpMSG)
+        sys.exit()
     if(not(Path(file).exists())):
         print("File at given path does not exist.")
         sys.exit(-1)
@@ -240,6 +241,9 @@ def main():
     except:
         print(helpMSG)
         sys.exit(2)
+    if len(opts) == 0:
+        print("Missing arguments!\n"+helpMSG)
+        sys.exit()
     try:
         for opt, arg in opts:
             if opt == '-h':
